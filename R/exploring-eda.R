@@ -37,9 +37,6 @@ ggplotly(bt_baseline_2017 %>%
                 x = 'Sediment Delivery/Sediment Produced (FS Only)',
                 Fill = 'Baseline Rating'), tooltip = list('text'))
 
-resourceviz::cairo_view()
-library(resourceviz)
-
 bt_baseline_2017 %>%
   st_drop_geometry() %>%
   filter(fs_huc_area > 1000) %>%
@@ -55,9 +52,10 @@ bt_baseline_2017 %>%
 
 bt_baseline_2017 %>% st_drop_geometry() %>% filter(fs_huc_area > 10000) %>%
   ggplot(aes(sdelFS, road_density)) +
-  geom_point(shape = 21, aes(fill = total_road_length),color = 'black', size = 3) +
+  geom_point(shape = 21,aes(fill = sdrFS), color = 'black', size = 3) +
   #scale_fill_manual(values = c('forestgreen', 'yellow', 'red')) +
   scale_fill_gradientn(colors = rev(hcl.colors(11, 'Zissou1'))) +
+  geom_abline(slope = 1, intercept = 0) +
   custom_theme() +
   labs(y = 'FS Only Road Density',
        x = 'Sediment Delivery (FS Only)',
