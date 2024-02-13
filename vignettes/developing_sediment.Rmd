@@ -1,0 +1,205 @@
+---
+title: "developing_sediment"
+output: rmarkdown::html_vignette
+vignette: >
+  %\VignetteIndexEntry{developing_sediment}
+  %\VignetteEngine{knitr::rmarkdown}
+  %\VignetteEncoding{UTF-8}
+---
+
+```{r, include = FALSE}
+knitr::opts_chunk$set(
+  collapse = TRUE,
+  comment = "#>"
+)
+```
+
+```{r setup}
+library(btbaseline)
+
+
+```
+
+
+
+```{r}
+library(tidyverse)
+library(sf)
+library(lubridate)
+
+
+fnf_sed_data <- read_csv('data/fnf_og_data.csv')
+fnf_sed_data <- fnf_sed_data %>% pivot_longer(starts_with('year_')) %>% separate_wider_delim(name, delim = '_', names = c('name', 'year')) %>% select(-name)
+
+
+fnf_sed_data <- fnf_sed_data %>% mutate(across('value', ~.x*350.266, .names = "{str_remove(.col, '_tons_mi2_yr')}_kg_km2_yr"),
+                                        area_km2 = area_mi2*2.58999,
+                                        year = as.numeric(year)) %>%
+                                 filter(!is.na(value)) %>%
+                                 group_by(station_number) %>%
+                                 add_count(name = 'total_samples') %>%
+                                 ungroup() %>% filter(total_samples >= 5,
+                                                      area_mi2 > 8) %>%
+                                 rename(value_tons_mi2_yr = 'value') %>%
+                                 filter(!station_name %in% c('Whitcomb Lower', 'Wounded Buck Lower'))
+
+
+neesvig_data <- tribble(
+  ~station_name, ~year, ~value_tons_mi2_yr,
+  'Trout Creek', 2008, 10282,
+  'Trout Creek', 2009, 3257,
+  'Trout Creek', 2010, 10413,
+  'Trout Creek', 2011, 10262,
+  'Trout Creek', 2012, 12613,
+  'Trout Creek', 2013, 4161,
+  'Trout Creek', 2014, 8300,
+  'Trout Creek', 2015, 3807,
+  'Trout Creek', 2016, 925,
+  'Trout Creek', 2017, 2914,
+  'Trout Creek', 2018, 3149,
+  'Trout Creek', 2019, 1091,
+  'Trout Creek', 2020, 1579,
+  'Trout Creek', 2021, 673,
+  'Vermillion River', 2008, 46575,
+  'Vermillion River', 2009, 82172,
+  'Vermillion River', 2010, 4977,
+  'Vermillion River', 2011, 20869,
+  'Vermillion River', 2012, 28390,
+  'Vermillion River', 2013, 7082,
+  'Vermillion River', 2014, 3358,
+  'Vermillion River', 2015, 3496,
+  'Vermillion River', 2016, 2239,
+  'Vermillion River', 2017, 2605,
+  'Vermillion River', 2019, 4357,
+  'Vermillion River', 2020, 6746,
+  'Vermillion River', 2021,2647,
+  'Vermillion River', 2022,2624
+)%>% mutate(station_number = if_else(station_name == 'Trout Creek', 'KNF01', 'KNF02'),
+            area_mi2 = if_else(station_name == 'Trout Creek', 47.25, 102),
+            value_tons_mi2_yr = if_else(station_name == 'Trout Creek', value_tons_mi2_yr/47.25, value_tons_mi2_yr/102),
+            value_kg_km2_yr = value_tons_mi2_yr*350.266,
+            area_km2 = area_mi2*2.58999) %>% add_count(station_number, name = 'total_samples')
+
+
+
+kirch_2001 <- tribble(
+  ~stream_name, ~area_km2, ~ record_length, ~mu,~sigma,
+  "Trapper Creek" ,20, 10, 9.8, 1.6,
+  "South Fk. Red River", 98, 14, 8.0, 1.4,
+  "Upper Red River", 129, 14, 10.1 ,1.6,
+  "Johns Creek", 293, 10, 7.6, 1.3,
+  "West Fork", 17, 23, 5, 0.5,
+  "East Fork", 14, 23, 2.5, 0.3,
+  "Tailholt Main", 6.6, 28, 14, 2.8
+) %>%
+  mutate(across(4:5, ~.*1000*0.00285497),
+         area_mi2 = area_km2*0.386102) %>%
+  bind_rows(tribble(
+    ~stream_name, ~area_km2, ~ record_length, ~mu,~sigma,
+    "Martin Creek", NA, NA, 11.81, NA,
+    "Meadow Creek", NA, NA, 7.91, NA,
+    "Moose Creek", NA, NA, 5.81, NA,
+    "Paint Creek", NA, NA, 58.7, NA,
+    "Tolam Creek", NA, NA, 10.29, NA,
+    "Warm Springs", NA, NA, 6.61, NA,
+    "Drainage A", NA, NA, 26.7, NA,
+    "Drainage B", NA, NA, 4.65, NA,
+    "Drainage C", NA, NA, 0.72, NA
+  ))
+
+libby_data <- tribble(
+  ~`Sub Basin`,	~`Station name`, ~`Area (mi2)`,	~`N (years)`, ~`Mean Daily Q (cfs)`, ~`Mean Daily suspended yield (tons/day)`,	~`Mean Annual total  suspended yield (tons)`,
+  'mid Kootenai',	'Quartz Creek',	35.8,	17,	74.9,	3.15,	1149.75,
+  'Fisher River',	'Himes Creek',	10.4,	19,	15.5,	0.25,	91.25,
+  'mid Kootenai',	'Pipe Creek',		105.8,	10,	59,	2.04,	745,
+  'mid Kootenai',	'Flower Creek',	11.2,	15,	25.4,	1.14,	416.1,
+  'Fisher River',	'Silver Butte',	79.6,	3,	97.55,	2.97,	1084
+  ) %>% janitor::clean_names() %>%
+  transmute(value_tons_mi2_yr = mean_annual_total_suspended_yield_tons/area_mi2,
+         value_kg_km2_yr = value_tons_mi2_yr*350.266,
+         station_number = c('KNF03', 'KNF04', 'KNF05', 'KNF06', 'KNF07'),
+         station_name = station_name)
+libby_data
+
+sediment_together <- bind_rows(fnf_sed_data, neesvig_data)
+sediment_together <- bind_rows(fnf_sed_data)
+
+
+sediment_together %>% ggplot(aes(year,value_tons_mi2_yr)) +
+  geom_point() +
+  resourceviz::Add_R2() +
+  facet_wrap(~station_number, scales = 'free')
+
+non_stationary <- sediment_together %>%
+  group_by(station_number) %>%
+  nest() %>%
+  mutate(model = map(data, ~as.numeric(Kendall::MannKendall(.$value_tons_mi2_yr)$sl))) %>%
+  unnest() %>%
+  slice(1) %>%
+  ungroup() %>%
+  filter(model > 0.05) %>%
+  pull(station_number)
+
+sediment_together <- sediment_together %>% filter(station_number %in% non_stationary)
+
+sediment_together_mean <- sediment_together %>% group_by(station_number) %>% summarise(across(starts_with('value_'), ~mean(.x))) %>%
+  bind_rows(libby_data)
+
+library(evd)
+library(smwrBase)
+
+sed_dist <- wildlandhydRo::batch_distribution(sediment_together_mean, value_tons_mi2_yr, method = 'mge')
+
+sed_dist_rep <- wildlandhydRo::reportDist(sed_dist,chisqbreaks=seq(0,1,0.1))
+
+wildlandhydRo::plot_reportDist(sed_dist_rep)
+
+wildlandhydRo::plot_allDist(sed_dist)
+wildlandhydRo::plot_cdfDist(sed_dist)
+sed_dist
+
+
+sed_dist_kirch <- wildlandhydRo::batch_distribution(kirch_2001, mu, method = 'mge')
+
+sed_dist_kirch_rep <- wildlandhydRo::reportDist(sed_dist_kirch, chisqbreaks=seq(0,1,0.1))
+
+
+wildlandhydRo::plot_allDist(sed_dist_kirch['lnorm'])
+wildlandhydRo::plot_cdfDist(sed_dist)
+
+lnorm_kirch <- fitdistrplus::fitdist(kirch_2001$mu, distr = "lnorm")
+
+
+#### now write into a dataset to use for bayes model
+
+
+bt_sf_df <- read_csv('Z:/fisheries/btbaseline/data/bt_sf_df.csv')
+set.seed(1234)
+
+sed_sim <- tibble(spec_delFS = ifelse(bt_sf_df$ig_or_not == 'sedimentary',
+                                      {b <- bt_sf_df$tlenFS
+                                      error <- rnorm(655, sd = 1/(b+0.001))
+                                      a <- bt_sf_df$specdelFS_HA*1000*14*error
+                                      (bt_sf_df$specdelFS_HA*1000*14 + a)*0.00285497
+                                      },{
+                                        b <- bt_sf_df$tlenFS
+                                        error <- rnorm(655, sd = 1/(b+0.001))
+                                        a <- bt_sf_df$specdelFS_HA*1000*21*error
+                                        (bt_sf_df$specdelFS_HA*1000*21.3 + a)*0.00285497
+                                      }),
+                  base_erosion = ifelse(bt_sf_df$ig_or_not == 'sedimentary',
+                                        rlnorm(10000, meanlog = as.numeric(sed_dist$lnorm$estimate['meanlog']), sdlog = as.numeric(sed_dist$lnorm$estimate['sdlog'])),
+                                        rlnorm(10000, meanlog = as.numeric(lnorm_kirch$estimate['meanlog']), sdlog = as.numeric(lnorm_kirch$estimate['sdlog']))),
+                  road_length = bt_sf_df$tlenFS,
+                  ig_or_not = bt_sf_df$ig_or_not,
+                  og_spec = ifelse(bt_sf_df$ig_or_not == 'sedimentary',
+                                   bt_sf_df$specdelFS_HA*1000*14*0.00285497, # converting to tons
+                                   bt_sf_df$specdelFS_HA*1000*21.3*0.00285497 # converting to tons
+                                   )
+) %>% mutate(spec_delFS = if_else(spec_delFS < 0, 0, spec_delFS),
+             proportion = spec_delFS/(spec_delFS+base_erosion)) %>%
+  filter(proportion > 0, proportion < 1)
+
+write_csv(sed_sim, 'data/model_data.csv')
+```
+
